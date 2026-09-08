@@ -1,5 +1,10 @@
 # NextDNS Telegram & Desktop Manager
 
+[![CodeQL](https://img.shields.io/badge/CodeQL-passing-brightgreen?logo=github)](https://github.com/p0lygraph/NextDNS-telegram/security/code-scanning)
+[![Security: Protected](https://img.shields.io/badge/Security-Protected-brightgreen.svg?logo=github)](https://github.com/p0lygraph/NextDNS-telegram/security)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
 A powerful dual-mode application (Desktop GUI + Headless daemon) to monitor, manage, and automate [NextDNS](https://nextdns.io/) profiles. Features an interactive Telegram Bot with actionable inline alerts and automated threat intelligence enrichment via URLhaus and urlscan.io.
 
 ---
