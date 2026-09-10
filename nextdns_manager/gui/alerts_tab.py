@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 from ..alerts import AlertBatchQP, format_batch_message_qp
-from ..constants import APP_TIMEOUT, APP_TITLE
+from ..constants import APP_TIMEOUT, APP_TITLE, TELEGRAM_SEND_INTERVAL_SECONDS
 from ..deps import requests
 from ..telegram_bot import redact_telegram_token, send_alert_message
 from ..threat_intel import queryparser_enrichment_sync
@@ -21,6 +22,7 @@ from ..utils import (
     normalize_domain,
     normalize_lines,
     now_iso,
+    parse_epoch_seconds,
     row_is_blocked,
 )
 from .widgets import MultiSelectMenu
@@ -28,6 +30,12 @@ from .widgets import MultiSelectMenu
 
 class AlertsTabMixin:
     """Alerts tab behaviour for NextDNSManagerApp."""
+
+    def shared_telegram_token_var(self) -> tk.StringVar:
+        # Both tabs bind one variable so neither overwrites the other on save.
+        if not hasattr(self, "telegram_token_var"):
+            self.telegram_token_var = tk.StringVar(value=self.store.data["api"].get("telegram_bot_token", ""))
+        return self.telegram_token_var
 
     def _build_alerts_tab(self) -> None:
         tab = ttk.Frame(self.notebook, padding=10)
@@ -71,8 +79,7 @@ class AlertsTabMixin:
         ttk.Checkbutton(top, text="Enable Telegram alerts", variable=self.telegram_enabled, command=self._save_ui_state).grid(row=0, column=0, sticky="w")
 
         ttk.Label(top, text="Bot token").grid(row=1, column=0, sticky="w", pady=(8, 0))
-        self.telegram_token_var = tk.StringVar(value=self.store.data["api"].get("telegram_bot_token", ""))
-        ttk.Entry(top, textvariable=self.telegram_token_var, show="*").grid(row=2, column=0, sticky="ew")
+        ttk.Entry(top, textvariable=self.shared_telegram_token_var(), show="*").grid(row=2, column=0, sticky="ew")
 
         ttk.Label(top, text="Chat ID").grid(row=1, column=1, sticky="w", pady=(8, 0), padx=(10, 0))
         self.telegram_chat_var = tk.StringVar(value=self.store.data["api"].get("telegram_chat_id", ""))
@@ -493,8 +500,11 @@ class AlertsTabMixin:
             return
 
         batches: dict[str, AlertBatchQP] = {}
+        batch_event_keys: dict[str, list[str]] = {}
+        seen_in_run: set[str] = set()
         ignore_cache: dict[str, set[str]] = {}
         disabled_cache: dict[str, set[str]] = {}
+        enabled_cache: dict[str, bool] = {}
 
         for row in rows:
             if self.pause_event.is_set():
@@ -507,6 +517,10 @@ class AlertsTabMixin:
             if profile_id not in ignore_cache:
                 ignore_cache[profile_id] = self.legacy_state.get_ignore_patterns(profile_id)
                 disabled_cache[profile_id] = set(self.legacy_state.get_disabled_reasons(profile_id))
+                enabled_cache[profile_id] = bool(self.legacy_state.get_profile(profile_id).get("enabled", True))
+            # Profiles toggled off from the Telegram bot must stay silent here too.
+            if not enabled_cache[profile_id]:
+                continue
             ignorelist = ignore_cache[profile_id]
             disabled_reasons = disabled_cache[profile_id]
             domain = str(row.get("domain", ""))
@@ -518,21 +532,28 @@ class AlertsTabMixin:
             if reason_ids and all(rid in disabled_reasons for rid in reason_ids):
                 continue
 
+            timestamp = str(row.get("timestamp_raw", row.get("timestamp", "")))
             event = {
-                "timestamp": row.get("timestamp_raw", row.get("timestamp", "")),
+                "timestamp": timestamp,
                 "domain": domain,
                 "clientIp": row.get("ip", ""),
             }
             event_key = get_event_key_qp(event, profile_id)
-            if self.event_cache.contains(event_key):
+            if event_key in seen_in_run or self.event_cache.contains(event_key):
                 continue
-            self.event_cache.add(event_key)
+            seen_in_run.add(event_key)
 
             batch_key = f"{profile_id}|{domain}"
+            batch_event_keys.setdefault(batch_key, []).append(event_key)
+            event_epoch = parse_epoch_seconds(timestamp)
             if batch_key in batches:
                 b = batches[batch_key]
                 b.count += 1
-                b.last_timestamp = str(row.get("timestamp_raw", row.get("timestamp", "")))
+                # Rows arrive newest-first, so the period must be widened, not overwritten.
+                if event_epoch < parse_epoch_seconds(b.first_timestamp):
+                    b.first_timestamp = timestamp
+                if event_epoch > parse_epoch_seconds(b.last_timestamp):
+                    b.last_timestamp = timestamp
                 b.devices.add(str(row.get("device_name", "") or "Unknown"))
                 b.reasons.update([s.strip() for s in str(row.get("reason", "")).split(",") if s.strip()])
                 b.reason_ids.update(reason_ids)
@@ -542,8 +563,8 @@ class AlertsTabMixin:
                     profile_id=profile_id,
                     profile_name=profile_name,
                     first_event_index=int(row.get("event_index", 0)),
-                    first_timestamp=str(row.get("timestamp_raw", row.get("timestamp", ""))),
-                    last_timestamp=str(row.get("timestamp_raw", row.get("timestamp", ""))),
+                    first_timestamp=timestamp,
+                    last_timestamp=timestamp,
                     count=1,
                     devices={str(row.get("device_name", "") or "Unknown")},
                     reasons=set([s.strip() for s in str(row.get("reason", "")).split(",") if s.strip()]),
@@ -553,7 +574,7 @@ class AlertsTabMixin:
         if not batches:
             return
 
-        candidates = list(batches.values())
+        candidates = [(batch, batch_event_keys.get(key, [])) for key, batch in batches.items()]
 
         self._set_status(f"Sending Telegram alerts: 0/{len(candidates)}")
 
@@ -561,7 +582,7 @@ class AlertsTabMixin:
 
         def job() -> int:
             sent = 0
-            for idx, batch in enumerate(candidates, start=1):
+            for idx, (batch, event_keys) in enumerate(candidates, start=1):
                 if self.pause_event.is_set():
                     break
                 enrichment = self._queryparser_enrichment(batch.domain)
@@ -573,8 +594,13 @@ class AlertsTabMixin:
                 msg = format_batch_message_qp(batch, enrichment, context)
                 if send_alert_message(token, chat_id, self.legacy_state, batch, msg):
                     sent += 1
+                    # Dedupe only after delivery, so a failed send can retry next refresh.
+                    for event_key in event_keys:
+                        self.event_cache.add(event_key)
                 if idx == 1 or idx % 5 == 0 or idx == len(candidates):
                     self._publish_progress(f"Sending Telegram alerts: {idx}/{len(candidates)}")
+                if idx < len(candidates):
+                    time.sleep(TELEGRAM_SEND_INTERVAL_SECONDS)
             return sent
 
         self.submit_job("telegram_alerts", job, self._on_alert_batch_done)

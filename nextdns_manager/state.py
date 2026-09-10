@@ -168,6 +168,7 @@ class LegacyStateManager:
             print(f"[WARN] Failed to back up corrupt legacy state: {exc}")
 
     def save(self) -> None:
+        # Write and replace stay locked: concurrent savers share one tmp path.
         with self.lock:
             try:
                 payload = json.dumps(self.state, indent=2, ensure_ascii=True)
@@ -175,15 +176,15 @@ class LegacyStateManager:
                 print(f"[WARN] Failed to serialize legacy state: {exc}")
                 return
 
-        tmp = self.path.with_suffix(".tmp")
-        try:
-            with tmp.open("w", encoding="utf-8") as f:
-                f.write(payload)
-                f.flush()
-                os.fsync(f.fileno())
-            tmp.replace(self.path)
-        except (OSError, PermissionError) as exc:
-            print(f"[WARN] Failed to save legacy state to {self.path}: {exc}")
+            tmp = self.path.with_suffix(".tmp")
+            try:
+                with tmp.open("w", encoding="utf-8") as f:
+                    f.write(payload)
+                    f.flush()
+                    os.fsync(f.fileno())
+                tmp.replace(self.path)
+            except (OSError, PermissionError) as exc:
+                print(f"[WARN] Failed to save legacy state to {self.path}: {exc}")
 
     def get_profile(self, profile_id: str) -> dict[str, Any]:
         with self.lock:

@@ -382,12 +382,13 @@ class NextDNSManagerApp(
     def _sort_tree(self, tree: ttk.Treeview, col: str, reverse: bool) -> None:
         data = [(tree.set(k, col), k) for k in tree.get_children("")]
 
-        def key(item: tuple[str, str]) -> Any:
+        def key(item: tuple[str, str]) -> tuple[int, float, str]:
             val = item[0]
+            # Columns mix numbers with blanks/text, so every key must stay the same shape.
             try:
-                return int(val)
+                return (0, float(val), "")
             except ValueError:
-                return val.lower()
+                return (1, 0.0, val.lower())
 
         data.sort(key=key, reverse=reverse)
         for index, (_, k) in enumerate(data):

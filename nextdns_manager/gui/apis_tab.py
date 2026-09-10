@@ -26,7 +26,10 @@ class ApisTabMixin:
 
         for idx, (key, label) in enumerate(rows):
             ttk.Label(card, text=label).grid(row=idx * 2, column=0, sticky="w", pady=(0 if idx == 0 else 8, 0))
-            var = tk.StringVar(value=self.store.data["api"].get(key, ""))
+            if key == "telegram_bot_token":
+                var = self.shared_telegram_token_var()
+            else:
+                var = tk.StringVar(value=self.store.data["api"].get(key, ""))
             entry = ttk.Entry(card, textvariable=var, show="*")
             entry.grid(row=idx * 2 + 1, column=0, sticky="ew")
             btn = ttk.Button(card, text="Show")

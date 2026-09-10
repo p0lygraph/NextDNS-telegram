@@ -161,12 +161,14 @@ class LogsTabMixin:
                                 logs.extend(page)
                                 latest_ts = max(latest_ts, max(parse_epoch_seconds(str(item.get("timestamp", ""))) for item in page))
 
-                            if new_cursor and new_cursor != current_cursor:
+                            cursor_advanced = bool(new_cursor) and new_cursor != current_cursor
+                            if cursor_advanced:
                                 current_cursor = new_cursor
                                 self.legacy_state.update_profile(profile_id, cursor=new_cursor)
                                 state_changed = True
 
-                            if not page or len(page) < 1000:
+                            # Full page without a new cursor would refetch the same window forever.
+                            if not page or len(page) < 1000 or not cursor_advanced:
                                 break
                     elif last_success_ts > 0:
                         # Lookback caps the backlog fetched after a long downtime.

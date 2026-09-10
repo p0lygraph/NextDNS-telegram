@@ -14,6 +14,7 @@ from .alerts import AlertBatchQP
 from .caches import TTLCache
 from .constants import (
     APP_TIMEOUT,
+    BLOCKED_STATUSES,
     TELEGRAM_API_CACHE_TTL_SECONDS,
     TELEGRAM_LOG_PAGE_SIZE,
     TELEGRAM_MAX_MESSAGE_CHARS,
@@ -684,7 +685,7 @@ def _telegram_show_logs(
     mode = "a" if mode == "a" else "b"
     logs = _telegram_cached_logs(nextdns, profile_id)
     if mode == "b":
-        logs = [item for item in logs if str(item.get("status", "")).lower() == "blocked"]
+        logs = [item for item in logs if str(item.get("status", "")).lower() in BLOCKED_STATUSES]
     page_items, page, total_pages = _telegram_paginate(logs, page, TELEGRAM_LOG_PAGE_SIZE)
     name = _telegram_profile_name(profiles, profile_id)
     lines = [f"<b>🧾 Logs: {html_escape(name)}</b> ({'blocked' if mode == 'b' else 'all'}, {page + 1}/{total_pages})"]
@@ -993,7 +994,8 @@ def process_telegram_updates(
                 if parts[1] == "page":
                     _telegram_show_denylist_profile_picker(token_clean, target_chat_id, current_profiles, int(parts[2]), message_id, True)
                 elif require_nextdns(target_chat_id, message_id, True):
-                    _telegram_show_denylist(token_clean, target_chat_id, current_profiles, nextdns, parts[1], int(parts[2]), message_id, True)
+                    # parts[2] is the profile-picker page, not a denylist page.
+                    _telegram_show_denylist(token_clean, target_chat_id, current_profiles, nextdns, parts[1], 0, message_id, True)
             elif data.startswith("tp:"):
                 _, sid, page_raw = data.split(":", 2)
                 if require_nextdns(target_chat_id, message_id, True):
@@ -1029,7 +1031,8 @@ def process_telegram_updates(
                 if parts[1] == "page":
                     _telegram_show_tld_picker(token_clean, target_chat_id, current_profiles, int(parts[2]), message_id, True)
                 elif require_nextdns(target_chat_id, message_id, True):
-                    _telegram_show_tlds(token_clean, target_chat_id, current_profiles, nextdns, parts[1], int(parts[2]), message_id, True)
+                    # parts[2] is the profile-picker page, not a TLD page.
+                    _telegram_show_tlds(token_clean, target_chat_id, current_profiles, nextdns, parts[1], 0, message_id, True)
             elif data.startswith("lp:"):
                 parts = data.split(":")
                 if parts[1] == "page":

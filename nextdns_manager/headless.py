@@ -17,6 +17,7 @@ from .constants import (
     BLOCKED_STATUSES,
     HEADLESS_FRESH_START_SECONDS,
     LEGACY_STATE_FILE,
+    TELEGRAM_SEND_INTERVAL_SECONDS,
 )
 from .deps import requests
 from .nextdns_api import NextDNSService
@@ -155,6 +156,8 @@ def run_headless(root_dir: Path) -> None:
             ignore_patterns = legacy.get_ignore_patterns(profile_id)
             disabled_reasons = set(legacy.get_disabled_reasons(profile_id))
             batches: dict[str, AlertBatchQP] = {}
+            batch_event_keys: dict[str, list[str]] = {}
+            seen_keys: set[str] = set()
             all_logs: list[dict[str, Any]] = []
             latest_ts = last_success_ts
             profile_blocked = 0
@@ -193,11 +196,12 @@ def run_headless(root_dir: Path) -> None:
                         continue
 
                     ekey = get_event_key_qp(event, profile_id)
-                    if cache.contains(ekey):
+                    if ekey in seen_keys or cache.contains(ekey):
                         continue
-                    cache.add(ekey)
+                    seen_keys.add(ekey)
 
                     bkey = f"{profile_id}|{domain}"
+                    batch_event_keys.setdefault(bkey, []).append(ekey)
                     _device_id, device_name = extract_device_info(event)
                     device_name = device_name or "Unknown"
                     ts = str(event.get("timestamp", ""))
@@ -223,7 +227,8 @@ def run_headless(root_dir: Path) -> None:
                             reason_ids=set(reason_ids),
                         )
 
-                if new_cursor and new_cursor != current_cursor:
+                cursor_advanced = bool(new_cursor) and new_cursor != current_cursor
+                if cursor_advanced:
                     current_cursor = new_cursor
                     legacy.update_profile(profile_id, cursor=new_cursor, headless_cursor_mode_ready=True)
                     if latest_ts > 0:
@@ -232,6 +237,10 @@ def run_headless(root_dir: Path) -> None:
 
                 fresh_from = None
                 if not logs or len(logs) < 1000:
+                    break
+                if not cursor_advanced:
+                    # Full page without a new cursor would refetch the same window forever.
+                    log(f"[WARN] Profile {profile_name}: cursor did not advance, stopping pagination")
                     break
 
             if latest_ts > 0 and latest_ts != last_success_ts:
@@ -247,12 +256,15 @@ def run_headless(root_dir: Path) -> None:
             )
 
             sent_for_profile = 0
-            for idx, batch in enumerate(batches.values(), start=1):
+            for idx, (bkey, batch) in enumerate(batches.items(), start=1):
                 progress(f"Profile {profile_name}: sending Telegram alerts {idx}/{len(batches)}")
                 context = collect_context_qp(all_logs, batch.first_event_index, all_logs[batch.first_event_index]) if 0 <= batch.first_event_index < len(all_logs) else {"before": [], "after": [], "header": "Surrounding DNS Queries:"}
                 if send_batch_message(batch, context):
                     sent_for_profile += 1
-                time.sleep(1)
+                    # Dedupe only after delivery, so a failed send can retry next cycle.
+                    for ekey in batch_event_keys.get(bkey, []):
+                        cache.add(ekey)
+                time.sleep(TELEGRAM_SEND_INTERVAL_SECONDS)
             cycle_sent += sent_for_profile
             if batches:
                 log(f"Profile {profile_name}: Telegram alerts sent {sent_for_profile}/{len(batches)}")
