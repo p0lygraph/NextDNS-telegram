@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from html import escape as html_escape
-from typing import Any
+from typing import Any, Iterable
 
 from .utils import format_time_range_qp, format_timestamp_qp
 
@@ -23,9 +23,13 @@ class AlertBatchQP:
     reason_ids: set[str] = field(default_factory=set)
 
 
+def is_threat_batch(reason_ids: Iterable[str]) -> bool:
+    return any("threat" in str(rid) or "malware" in str(rid) for rid in reason_ids)
+
+
 def format_batch_message_qp(batch: AlertBatchQP, enrichment: str, context: dict[str, Any] | None = None) -> str:
     domain = batch.domain
-    if any("threat" in rid or "malware" in rid for rid in batch.reason_ids):
+    if is_threat_batch(batch.reason_ids):
         header = "☣️ Malicious Domain Blocked"
     elif any("blocklist" in rid for rid in batch.reason_ids):
         header = "🛡️ Blocklist Match"

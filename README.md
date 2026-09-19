@@ -318,6 +318,7 @@ Once running (in GUI mode with alerts enabled or in `--headless` mode), interact
 | `/ignorelist` | None | Alias for `/list`. |
 | `/ignore` | `[pattern]` | Without arguments: view active ignore patterns. With argument (e.g. `/ignore domain.com` or `/ignore *.domain.com`): prompts to add the pattern to a profile's ignore list. |
 | `/denylist` | `[domain]` | Without arguments: pick a profile to view/manage its blocked domains. With argument (e.g. `/denylist evil.com`): prompts to add the domain to a profile's denylist. |
+| `/allowlist` | `[domain]` | Without arguments: pick a profile to view/manage its allowed domains. With argument (e.g. `/allowlist my-bank.com`): prompts to allow the domain on a profile. Allowlist entries override every NextDNS filter (security included) and cover subdomains; if the domain is on that profile's denylist, the confirmation screen warns you that it will be removed from there. |
 | `/tlds` | `[tld]` | Without arguments: pick a profile to view/manage blocked TLDs. With argument (e.g. `/tlds zip`): prompts to block or unblock the TLD on a selected profile. |
 | `/logs` | None | Select a profile and browse the most recent DNS query logs directly in chat with pagination. |
 
@@ -331,6 +332,9 @@ When NextDNS blocks a query, the bot immediately delivers an alert containing:
 Each alert notification message includes interactive buttons directly underneath:
 - 🔍 **URLHaus**: Instant direct link to the domain's live threat report on abuse.ch URLhaus.
 - 🔎 **URLScan**: Instant link to full sandbox scan results, HTTP requests, and visual page data on urlscan.io.
+- ✅ **Allow**: Unblocks a false positive (bank, parcel tracker, discount link) in one tap — the domain goes straight to the profile's NextDNS allowlist, so the site works immediately. If the domain was also on that profile's denylist, it is removed from there and the confirmation toast says so. The button then turns into **↩️ Undo allow**, which reverts both changes.
+  - On alerts flagged as malicious (☣️) the button reads **☣️ Allow** and asks for an explicit confirmation before bypassing NextDNS security.
+  - Undo stays available for one hour (the alert session lifetime); after that, use `/allowlist domain.com` → `🗑 REMOVE`.
 - 🚫 **Ignore**: Immediately adds the domain to your profile's alert ignore list with one click, suppressing future notifications for this pattern without affecting NextDNS blocking.
 
 ---

@@ -114,6 +114,31 @@ class NextDNSService:
             return True, "Domain was not blocked"
         return False, f"Failed to unblock ({resp.status_code})"
 
+    def get_allowlist(self, profile_id: str) -> list[str]:
+        resp = self._request("GET", f"/profiles/{profile_id}/allowlist")
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to fetch allowlist for {profile_id} ({resp.status_code})")
+        data = resp.json().get("data", [])
+        return sorted({(item.get("id") or "").strip().lower() for item in data if item.get("id")})
+
+    def add_allow_domain(self, profile_id: str, domain: str) -> tuple[bool, str]:
+        payload = {"id": domain.strip().lower(), "active": True}
+        resp = self._request("POST", f"/profiles/{profile_id}/allowlist", json=payload)
+        if resp.status_code in (200, 201):
+            return True, "Domain allowed"
+        if resp.status_code == 409:
+            return True, "Domain already allowed"
+        return False, f"Failed to allow ({resp.status_code})"
+
+    def remove_allow_domain(self, profile_id: str, domain: str) -> tuple[bool, str]:
+        encoded = quote(domain.strip().lower(), safe="")
+        resp = self._request("DELETE", f"/profiles/{profile_id}/allowlist/{encoded}")
+        if resp.status_code in (200, 204):
+            return True, "Domain removed from allowlist"
+        if resp.status_code == 404:
+            return True, "Domain was not allowed"
+        return False, f"Failed to remove from allowlist ({resp.status_code})"
+
     def get_security_tlds(self, profile_id: str) -> list[str]:
         resp = self._request("GET", f"/profiles/{profile_id}/security")
         if resp.status_code != 200:
