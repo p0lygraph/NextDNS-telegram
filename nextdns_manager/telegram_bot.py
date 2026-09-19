@@ -934,7 +934,7 @@ def _telegram_alert_allow_action(
             _telegram_answer_callback(
                 token,
                 callback_id,
-                f"⚠️ {domain} is flagged as malicious. Allowing it may lower the security of your network. Confirm below."[:190],
+                f"⚠️ {domain} is flagged as malicious. Allowing it may lower the security of your network. Tap ✅ Yes, allow to confirm."[:190],
                 True,
             )
             return 0

@@ -10,6 +10,11 @@ from .constants import APP_TIMEOUT, NEXTDNS_BASE_URL
 from .deps import requests
 
 
+# NextDNS answers some writes with 204, so treat any 2xx as applied.
+def _is_success(status_code: int) -> bool:
+    return 200 <= int(status_code) < 300
+
+
 class NextDNSService:
     def __init__(self, api_key_getter: Callable[[], str], on_rate_limit: Callable[[str, int, int], None] | None = None):
         self.api_key_getter = api_key_getter
@@ -99,7 +104,7 @@ class NextDNSService:
     def add_deny_domain(self, profile_id: str, domain: str) -> tuple[bool, str]:
         payload = {"id": domain.strip().lower()}
         resp = self._request("POST", f"/profiles/{profile_id}/denylist", json=payload)
-        if resp.status_code in (200, 201):
+        if _is_success(resp.status_code):
             return True, "Domain blocked"
         if resp.status_code == 409:
             return True, "Domain already blocked"
@@ -108,7 +113,7 @@ class NextDNSService:
     def remove_deny_domain(self, profile_id: str, domain: str) -> tuple[bool, str]:
         encoded = quote(domain.strip().lower(), safe="")
         resp = self._request("DELETE", f"/profiles/{profile_id}/denylist/{encoded}")
-        if resp.status_code in (200, 204):
+        if _is_success(resp.status_code):
             return True, "Domain unblocked"
         if resp.status_code == 404:
             return True, "Domain was not blocked"
@@ -124,7 +129,7 @@ class NextDNSService:
     def add_allow_domain(self, profile_id: str, domain: str) -> tuple[bool, str]:
         payload = {"id": domain.strip().lower(), "active": True}
         resp = self._request("POST", f"/profiles/{profile_id}/allowlist", json=payload)
-        if resp.status_code in (200, 201):
+        if _is_success(resp.status_code):
             return True, "Domain allowed"
         if resp.status_code == 409:
             return True, "Domain already allowed"
@@ -133,7 +138,7 @@ class NextDNSService:
     def remove_allow_domain(self, profile_id: str, domain: str) -> tuple[bool, str]:
         encoded = quote(domain.strip().lower(), safe="")
         resp = self._request("DELETE", f"/profiles/{profile_id}/allowlist/{encoded}")
-        if resp.status_code in (200, 204):
+        if _is_success(resp.status_code):
             return True, "Domain removed from allowlist"
         if resp.status_code == 404:
             return True, "Domain was not allowed"
@@ -150,6 +155,6 @@ class NextDNSService:
     def patch_security_tlds(self, profile_id: str, tlds: list[str]) -> tuple[bool, str]:
         payload = {"tlds": [{"id": tld.strip().lower()} for tld in sorted(set(tlds)) if tld.strip()]}
         resp = self._request("PATCH", f"/profiles/{profile_id}/security", json=payload)
-        if resp.status_code in (200, 204):
+        if _is_success(resp.status_code):
             return True, "TLD list updated"
         return False, f"Failed to update TLD list ({resp.status_code})"
