@@ -1,0 +1,33 @@
+# Secrets and local runtime state
+.env
+.env.*
+!.env.example
+gui_state.json
+state.json
+*state*.json
+*.corrupt.json
+*.tmp
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini

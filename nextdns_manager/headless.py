@@ -89,7 +89,9 @@ def run_headless(root_dir: Path) -> None:
     def poll_telegram_updates() -> int:
         nonlocal telegram_update_offset
         try:
-            next_offset, _handled, added = process_telegram_updates(token, chat_id, legacy, telegram_update_offset, svc, log)
+            next_offset, _handled, added = process_telegram_updates(
+                token, chat_id, legacy, telegram_update_offset, svc, log, enrichment_for
+            )
             if next_offset != telegram_update_offset:
                 telegram_update_offset = next_offset
                 store.data.setdefault("alerts", {})["telegram_update_offset"] = next_offset

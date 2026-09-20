@@ -322,6 +322,17 @@ Once running (in GUI mode with alerts enabled or in `--headless` mode), interact
 | `/tlds` | `[tld]` | Without arguments: pick a profile to view/manage blocked TLDs. With argument (e.g. `/tlds zip`): prompts to block or unblock the TLD on a selected profile. |
 | `/logs` | None | Select a profile and browse the most recent DNS query logs directly in chat with pagination. |
 
+### Domain Card (no command needed)
+
+Send the bot a bare domain or a link — `evil-site.com`, `https://example.org/path`, or even a sentence containing one — and it answers with a card for that domain instead of staying silent. The host is parsed out of the URL (scheme, credentials, port, path and query are stripped) and internationalized names are converted to punycode, the form NextDNS stores.
+
+The card carries these inline buttons:
+- 🚫 **To Denylist** / ✅ **To Allowlist** / 🔕 **To Ignore**: open the same profile pickers and confirmation screens as `/denylist`, `/allowlist` and `/ignore`, so nothing is applied until you pick a profile and confirm.
+- 🔍 **Check threats**: runs the URLhaus + urlscan.io lookup on demand and appends the verdict to the card. Shown only when the bot was started with threat intel available; the check can take a few seconds, so the card arrives first and is updated afterwards.
+- 🔍 **URLHaus** / 🔎 **URLScan**: direct links to the external reports.
+
+Text that contains no valid domain is ignored silently. Wildcard patterns such as `*.evil.com` are not accepted here (denylist and allowlist reject wildcards) — use `/ignore *.evil.com` for those. The card expires after one hour, like alert buttons; send the domain again to get a fresh one.
+
 ### Actionable Alert Notifications
 When NextDNS blocks a query, the bot immediately delivers an alert containing:
 - **Query details**: Timestamp, profile name, domain, root domain, and client device name/IP.
@@ -335,7 +346,7 @@ Each alert notification message includes interactive buttons directly underneath
 - ✅ **Allow**: Unblocks a false positive (bank, parcel tracker, discount link) in one tap — the domain goes straight to the profile's NextDNS allowlist, so the site works immediately. If the domain was also on that profile's denylist, it is removed from there and the confirmation toast says so. The button then turns into **↩️ Undo allow**, which reverts both changes.
   - On alerts flagged as malicious (☣️) the button reads **☣️ Allow** and asks for an explicit confirmation before bypassing NextDNS security.
   - Undo stays available for one hour (the alert session lifetime); after that, use `/allowlist domain.com` → `🗑 REMOVE`.
-- 🚫 **Ignore**: Immediately adds the domain to your profile's alert ignore list with one click, suppressing future notifications for this pattern without affecting NextDNS blocking.
+- 🔕 **Ignore**: Immediately adds the domain to your profile's alert ignore list with one click, suppressing future notifications for this pattern without affecting NextDNS blocking.
 
 ---
 

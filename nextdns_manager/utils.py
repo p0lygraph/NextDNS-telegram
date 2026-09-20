@@ -10,7 +10,11 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any
 
-from .constants import ALL_LOG_COLUMNS, BLOCKED_STATUSES, DOMAIN_RE
+from .constants import ALL_LOG_COLUMNS, BLOCKED_STATUSES, DOMAIN_RE, DOMAIN_TLD_RE, URL_SCHEME_RE
+
+
+_DOMAIN_TRIM_CHARS = "\"'`<>()[]{}.,;:!?"
+_DOMAIN_SCAN_TOKENS = 20
 
 
 def configure_windows_gui_console(headless: bool) -> None:
@@ -83,6 +87,31 @@ def is_valid_domain(value: str) -> bool:
 def is_valid_domain_pattern(value: str) -> bool:
     pattern = normalize_domain(value)
     return is_valid_domain(pattern[2:] if pattern.startswith("*.") else pattern)
+
+
+def token_to_domain(token: str) -> str:
+    host = URL_SCHEME_RE.sub("", token.strip().strip(_DOMAIN_TRIM_CHARS), count=1)
+    for separator in ("/", "?", "#"):
+        host = host.split(separator, 1)[0]
+    if "@" in host:
+        host = host.rsplit("@", 1)[1]
+    host = normalize_domain(host.split(":", 1)[0])
+    if not host.isascii():
+        try:
+            host = host.encode("idna").decode("ascii")
+        except (UnicodeError, ValueError):
+            return ""
+    if "." not in host or not is_valid_domain(host):
+        return ""
+    return host if DOMAIN_TLD_RE.fullmatch(host.rsplit(".", 1)[-1]) else ""
+
+
+def extract_domain(text: str) -> str:
+    for token in str(text).split()[:_DOMAIN_SCAN_TOKENS]:
+        domain = token_to_domain(token)
+        if domain:
+            return domain
+    return ""
 
 
 def is_valid_tld(tld: str) -> bool:

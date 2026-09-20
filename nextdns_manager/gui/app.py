@@ -341,7 +341,14 @@ class NextDNSManagerApp(
         self.telegram_poll_inflight = True
         self.submit_job(
             "telegram_updates_poll",
-            lambda: process_telegram_updates(token, chat_id, self.legacy_state, self.telegram_update_offset, self.nextdns),
+            lambda: process_telegram_updates(
+                token,
+                chat_id,
+                self.legacy_state,
+                self.telegram_update_offset,
+                self.nextdns,
+                enrich=self._queryparser_enrichment,
+            ),
             self._on_telegram_callback_poll_done,
         )
 

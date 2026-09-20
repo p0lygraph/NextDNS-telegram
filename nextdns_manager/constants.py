@@ -16,6 +16,9 @@ HEADLESS_FRESH_START_SECONDS = 60
 
 BLOCKED_STATUSES = frozenset({"blocked", "deny", "sinkhole", "refused"})
 DOMAIN_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*")
+URL_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://")
+# Rejects numeric last labels, so bare IPv4 and file names never pass as domains.
+DOMAIN_TLD_RE = re.compile(r"[a-z]{2,63}|xn--[a-z0-9-]{2,59}")
 MAX_LOG_ROWS_IN_MEMORY = 10000
 
 DEFAULT_LOG_COLUMNS = [

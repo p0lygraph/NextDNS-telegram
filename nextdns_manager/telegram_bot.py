@@ -25,12 +25,19 @@ from .deps import requests
 from .state import LegacyStateManager
 from .utils import (
     extract_device_info,
+    extract_domain,
     format_timestamp_display,
     is_valid_domain,
     is_valid_domain_pattern,
     is_valid_tld,
     normalize_domain,
 )
+
+
+# A domain card issues one session that the deny/allow/ignore flows all reuse.
+_DENY_SESSION_KINDS = ("deny", "card")
+_ALLOW_SESSION_KINDS = ("allow", "card")
+_IGNORE_SESSION_KINDS = ("ignore", "card")
 
 
 _TELEGRAM_TOKEN_IN_URL_RE = re.compile(r"/bot\d+:[A-Za-z0-9_-]+")
@@ -292,19 +299,20 @@ def _telegram_main_menu_text() -> str:
         "/status - 📊 current state\n"
         "/profiles - 👤 monitored profiles\n"
         "/filters - 🔕 per-profile reason overrides\n"
-        "/ignore domain.com - 🚫 alert ignore patterns\n"
+        "/ignore domain.com - 🔕 alert ignore patterns\n"
         "/list - 📋 ignored patterns list\n"
-        "/denylist domain.com - 🧱 NextDNS denylist\n"
+        "/denylist domain.com - 🚫 NextDNS denylist\n"
         "/allowlist domain.com - ✅ NextDNS allowlist\n"
         "/tlds ru - 🌐 blocked TLDs\n"
-        "/logs - 🧾 recent profile logs"
+        "/logs - 🧾 recent profile logs\n\n"
+        "<i>Send a domain or link without a command to get its action card.</i>"
     )
 
 
 def _telegram_main_menu_keyboard() -> list[list[dict[str, Any]]]:
     return [
         [{"text": "👤 Profiles", "callback_data": "m:profiles"}, {"text": "🔕 Filters", "callback_data": "m:filters"}],
-        [{"text": "🚫 Ignore List", "callback_data": "m:list"}, {"text": "🧱 Denylist", "callback_data": "m:denylist"}],
+        [{"text": "🔕 Ignore List", "callback_data": "m:list"}, {"text": "🚫 Denylist", "callback_data": "m:denylist"}],
         [{"text": "✅ Allowlist", "callback_data": "m:allowlist"}, {"text": "🌐 TLDs", "callback_data": "m:tlds"}],
         [{"text": "🧾 Logs", "callback_data": "m:logs"}, {"text": "📊 Status", "callback_data": "m:status"}],
     ]
@@ -494,9 +502,9 @@ def _telegram_show_ignore_list(
         for pattern in legacy_state.get_ignore_patterns(profile_id):
             grouped.setdefault(pattern, []).append(name)
     if not grouped:
-        text = "<b>🚫 Ignore List</b>\n\nNo ignored alert patterns.\nUse <code>/ignore domain.com</code>."
+        text = "<b>🔕 Ignore List</b>\n\nNo ignored alert patterns.\nUse <code>/ignore domain.com</code>."
     else:
-        lines = ["<b>🚫 Ignore List</b>"]
+        lines = ["<b>🔕 Ignore List</b>"]
         for pattern, names in sorted(grouped.items()):
             lines.append(f"<code>{html_escape(pattern)}</code> - {html_escape(', '.join(sorted(set(names))))}")
         text = _telegram_clip_lines(lines)
@@ -513,7 +521,7 @@ def _telegram_show_ignore_profile_picker(
     message_id: int | None = None,
     edit: bool = False,
 ) -> None:
-    pattern = _telegram_get_session(legacy_state, sid, "ignore")
+    pattern = _telegram_get_session(legacy_state, sid, _IGNORE_SESSION_KINDS)
     if not pattern:
         _telegram_reply_or_edit(token, target_chat_id, message_id, "Ignore session expired. Use /ignore domain.com again.", None, edit)
         return
@@ -532,7 +540,7 @@ def _telegram_show_ignore_profile_picker(
     if nav:
         keyboard.append(nav)
     keyboard.append([{"text": "🏠 Menu", "callback_data": "m:home"}])
-    text = f"<b>🚫 Ignore Pattern</b>\n<code>{html_escape(pattern)}</code>\n\nTap profiles to toggle alert ignore."
+    text = f"<b>🔕 Ignore Pattern</b>\n<code>{html_escape(pattern)}</code>\n\nTap profiles to toggle alert ignore."
     _telegram_reply_or_edit(token, target_chat_id, message_id, text, keyboard, edit)
 
 
@@ -547,7 +555,7 @@ def _telegram_show_nextdns_domain_picker(
     message_id: int | None = None,
     edit: bool = False,
 ) -> None:
-    domain = _telegram_get_session(legacy_state, sid, "deny")
+    domain = _telegram_get_session(legacy_state, sid, _DENY_SESSION_KINDS)
     if not domain:
         _telegram_reply_or_edit(token, target_chat_id, message_id, "Denylist session expired. Use /denylist domain.com again.", None, edit)
         return
@@ -567,7 +575,7 @@ def _telegram_show_nextdns_domain_picker(
     if nav:
         keyboard.append(nav)
     keyboard.append([{"text": "🏠 Menu", "callback_data": "m:home"}])
-    text = f"<b>🧱 Denylist Domain</b>\n<code>{html_escape(domain)}</code>\n\n➕ ADD / 🗑 REMOVE uses the selected NextDNS profile denylist."
+    text = f"<b>🚫 Denylist Domain</b>\n<code>{html_escape(domain)}</code>\n\n➕ ADD / 🗑 REMOVE uses the selected NextDNS profile denylist."
     _telegram_reply_or_edit(token, target_chat_id, message_id, text, keyboard, edit)
 
 
@@ -580,7 +588,7 @@ def _telegram_show_denylist_profile_picker(
     edit: bool = False,
 ) -> None:
     keyboard, page, total_pages = _telegram_profile_keyboard("dl", profiles, page)
-    _telegram_reply_or_edit(token, target_chat_id, message_id, f"<b>🧱 Denylist</b> ({page + 1}/{total_pages})\n\nChoose a profile to list.", keyboard, edit)
+    _telegram_reply_or_edit(token, target_chat_id, message_id, f"<b>🚫 Denylist</b> ({page + 1}/{total_pages})\n\nChoose a profile to list.", keyboard, edit)
 
 
 def _telegram_show_denylist(
@@ -596,7 +604,7 @@ def _telegram_show_denylist(
     domains = _telegram_cached_denylist(nextdns, profile_id)
     page_items, page, total_pages = _telegram_paginate(domains, page, 20)
     name = _telegram_profile_name(profiles, profile_id)
-    lines = [f"<b>🧱 Denylist: {html_escape(name)}</b> ({page + 1}/{total_pages})"]
+    lines = [f"<b>🚫 Denylist: {html_escape(name)}</b> ({page + 1}/{total_pages})"]
     if page_items:
         lines.extend([f"<code>{html_escape(item)}</code>" for item in page_items])
     else:
@@ -624,7 +632,7 @@ def _telegram_show_allow_domain_picker(
     message_id: int | None = None,
     edit: bool = False,
 ) -> None:
-    domain = _telegram_get_session(legacy_state, sid, "allow")
+    domain = _telegram_get_session(legacy_state, sid, _ALLOW_SESSION_KINDS)
     if not domain:
         _telegram_reply_or_edit(token, target_chat_id, message_id, "Allowlist session expired. Use /allowlist domain.com again.", None, edit)
         return
@@ -822,6 +830,52 @@ def _telegram_show_logs(
     _telegram_reply_or_edit(token, target_chat_id, message_id, _telegram_clip_lines(lines), keyboard, edit)
 
 
+def _telegram_domain_card_text(domain: str, threat_report: str = "") -> str:
+    lines = ["<b>🔎 Domain</b>", f"<code>{html_escape(domain)}</code>"]
+    if domain.startswith("xn--") or ".xn--" in domain:
+        lines.append("Punycode form of an internationalized domain.")
+    lines.append("")
+    lines.append("Pick an action, then choose the profiles to apply it to.")
+    if threat_report:
+        lines.append(threat_report)
+    return _telegram_clip_lines(lines)
+
+
+def _telegram_domain_card_keyboard(domain: str, sid: str, with_threat_check: bool) -> list[list[dict[str, Any]]]:
+    encoded_domain = quote(domain, safe="")
+    rows: list[list[dict[str, Any]]] = [
+        [
+            {"text": "🚫 To Denylist", "callback_data": f"cd:{sid}"},
+            {"text": "✅ To Allowlist", "callback_data": f"ca:{sid}"},
+        ],
+        [{"text": "🔕 To Ignore", "callback_data": f"ci:{sid}"}],
+    ]
+    if with_threat_check:
+        rows[1].insert(0, {"text": "🔍 Check threats", "callback_data": f"ct:{sid}"})
+    rows.append([
+        {"text": "🔍 URLHaus", "url": f"https://urlhaus.abuse.ch/host/{encoded_domain}/"},
+        {"text": "🔎 URLScan", "url": f"https://urlscan.io/search/#{encoded_domain}"},
+    ])
+    rows.append([{"text": "🏠 Menu", "callback_data": "m:home"}])
+    return rows
+
+
+def _telegram_show_domain_card(
+    token: str,
+    target_chat_id: str,
+    legacy_state: LegacyStateManager,
+    domain: str,
+    with_threat_check: bool,
+) -> None:
+    sid = _telegram_create_session(legacy_state, "card", domain)
+    _telegram_send_message(
+        token,
+        target_chat_id,
+        _telegram_domain_card_text(domain),
+        _telegram_domain_card_keyboard(domain, sid, with_threat_check),
+    )
+
+
 def _telegram_allow_domain(nextdns: Any, profile_id: str, domain: str) -> tuple[bool, str, bool]:
     ok, msg = nextdns.add_allow_domain(profile_id, domain)
     _TELEGRAM_API_CACHE.invalidate(f"allow:{profile_id}")
@@ -879,7 +933,7 @@ def _telegram_alert_keyboard(
     else:
         rows.append([
             {"text": "☣️ Allow" if is_threat else "✅ Allow", "callback_data": f"qa:{sid}:{profile_id}:{int(is_threat)}{int(is_threat)}"},
-            {"text": "🚫 Ignore", "callback_data": f"qi:{sid}:{profile_id}"},
+            {"text": "🔕 Ignore", "callback_data": f"qi:{sid}:{profile_id}"},
         ])
     return rows
 
@@ -963,6 +1017,7 @@ def process_telegram_updates(
     offset: int,
     nextdns: Any | None = None,
     logger: Callable[[str], None] | None = None,
+    enrich: Callable[[str], str] | None = None,
 ) -> tuple[int, int, int]:
     token_clean = token.strip()
     chat_id_clean = chat_id.strip()
@@ -1015,6 +1070,9 @@ def process_telegram_updates(
         target_chat_id, _message_id = _telegram_message_target(message, chat_id_clean)
         text = str(message.get("text", "")).strip()
         if not text.startswith("/"):
+            domain = extract_domain(text)
+            if domain:
+                _telegram_show_domain_card(token_clean, target_chat_id, legacy_state, domain, enrich is not None)
             return
         parts = text.split()
         command = parts[0].split("@", 1)[0].lower()
@@ -1120,6 +1178,27 @@ def process_telegram_updates(
                     _telegram_answer_callback(token_clean, callback_id, f"Ignored: {domain}")
                 return
 
+            if data.startswith("ct:"):
+                sid = data.split(":", 1)[1].strip()
+                if enrich is None:
+                    _telegram_answer_callback(token_clean, callback_id, "Threat intel is not available for this action.", True)
+                    return
+                domain = _telegram_get_session(legacy_state, sid, "card") or ""
+                if not domain:
+                    _telegram_answer_callback(token_clean, callback_id, "Domain session expired. Send the domain again.", True)
+                    return
+                # Answer first: the lookup can run for two API timeouts before the card is edited.
+                _telegram_answer_callback(token_clean, callback_id, "⏳ Checking threat intel…")
+                _telegram_reply_or_edit(
+                    token_clean,
+                    target_chat_id,
+                    message_id,
+                    _telegram_domain_card_text(domain, enrich(domain)),
+                    _telegram_domain_card_keyboard(domain, sid, False),
+                    True,
+                )
+                return
+
             if data.startswith(("qa:", "qu:", "qx:")):
                 changed_actions += _telegram_alert_allow_action(
                     token_clean,
@@ -1223,7 +1302,7 @@ def process_telegram_updates(
                 _telegram_show_ignore_profile_picker(token_clean, target_chat_id, legacy_state, current_profiles, sid, int(page_raw), message_id, True)
             elif data.startswith("ic:"):
                 _, sid, profile_id, page_raw = data.split(":", 3)
-                pattern = _telegram_get_session(legacy_state, sid, "ignore")
+                pattern = _telegram_get_session(legacy_state, sid, _IGNORE_SESSION_KINDS)
                 if not pattern or _telegram_get_profile(current_profiles, profile_id) is None:
                     raise ValueError("Invalid ignore session")
                 with legacy_state.lock:
@@ -1240,7 +1319,7 @@ def process_telegram_updates(
                     _telegram_show_nextdns_domain_picker(token_clean, target_chat_id, legacy_state, current_profiles, nextdns, sid, int(page_raw), message_id, True)
             elif data.startswith("da:") or data.startswith("dr:"):
                 op, sid, profile_id, page_raw = data.split(":", 3)
-                domain = _telegram_get_session(legacy_state, sid, "deny")
+                domain = _telegram_get_session(legacy_state, sid, _DENY_SESSION_KINDS)
                 if not domain:
                     raise ValueError("Denylist session expired")
                 action = "add" if op == "da" else "remove"
@@ -1252,7 +1331,7 @@ def process_telegram_updates(
                 _telegram_reply_or_edit(token_clean, target_chat_id, message_id, text, keyboard, True)
             elif data.startswith("dc:"):
                 _, op, sid, profile_id, page_raw = data.split(":", 4)
-                domain = _telegram_get_session(legacy_state, sid, "deny")
+                domain = _telegram_get_session(legacy_state, sid, _DENY_SESSION_KINDS)
                 if not domain or not require_nextdns(target_chat_id, message_id, True):
                     return
                 ok, msg = nextdns.add_deny_domain(profile_id, domain) if op == "a" else nextdns.remove_deny_domain(profile_id, domain)
@@ -1276,7 +1355,7 @@ def process_telegram_updates(
                     _telegram_show_allow_domain_picker(token_clean, target_chat_id, legacy_state, current_profiles, nextdns, sid, int(page_raw), message_id, True)
             elif data.startswith("aa:") or data.startswith("ar:"):
                 op, sid, profile_id, page_raw = data.split(":", 3)
-                domain = _telegram_get_session(legacy_state, sid, "allow")
+                domain = _telegram_get_session(legacy_state, sid, _ALLOW_SESSION_KINDS)
                 if not domain:
                     raise ValueError("Allowlist session expired")
                 if not require_nextdns(target_chat_id, message_id, True):
@@ -1286,7 +1365,7 @@ def process_telegram_updates(
                 if op == "aa":
                     text += "\n\nAllowlist wins over every NextDNS filter, security included, and covers subdomains."
                     if domain in set(_telegram_cached_denylist(nextdns, profile_id)):
-                        text += "\n\n🧱 This domain is on the profile denylist — it will be removed from there."
+                        text += "\n\n🚫 This domain is on the profile denylist — it will be removed from there."
                 keyboard = [[
                     {"text": "✅ Confirm", "callback_data": f"ac:{op[-1]}:{sid}:{profile_id}:{page_raw}"},
                     {"text": "↩️ Cancel", "callback_data": f"ap:{sid}:{page_raw}"},
@@ -1294,7 +1373,7 @@ def process_telegram_updates(
                 _telegram_reply_or_edit(token_clean, target_chat_id, message_id, text, keyboard, True)
             elif data.startswith("ac:"):
                 _, op, sid, profile_id, page_raw = data.split(":", 4)
-                domain = _telegram_get_session(legacy_state, sid, "allow")
+                domain = _telegram_get_session(legacy_state, sid, _ALLOW_SESSION_KINDS)
                 if not domain or not require_nextdns(target_chat_id, message_id, True):
                     return
                 if op == "a":
@@ -1366,6 +1445,14 @@ def process_telegram_updates(
                 _, profile_id, mode, page_raw = data.split(":", 3)
                 if require_nextdns(target_chat_id, message_id, True):
                     _telegram_show_logs(token_clean, target_chat_id, current_profiles, nextdns, profile_id, mode, int(page_raw), message_id, True)
+            elif data.startswith("cd:"):
+                if require_nextdns(target_chat_id, message_id, True):
+                    _telegram_show_nextdns_domain_picker(token_clean, target_chat_id, legacy_state, current_profiles, nextdns, data.split(":", 1)[1], 0, message_id, True)
+            elif data.startswith("ca:"):
+                if require_nextdns(target_chat_id, message_id, True):
+                    _telegram_show_allow_domain_picker(token_clean, target_chat_id, legacy_state, current_profiles, nextdns, data.split(":", 1)[1], 0, message_id, True)
+            elif data.startswith("ci:"):
+                _telegram_show_ignore_profile_picker(token_clean, target_chat_id, legacy_state, current_profiles, data.split(":", 1)[1], 0, message_id, True)
             else:
                 show_home(target_chat_id, message_id, True)
         except (ValueError, KeyError, TypeError, RuntimeError) as exc:
