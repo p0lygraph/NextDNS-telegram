@@ -1,0 +1,34 @@
+# Version control
+.git/
+.gitignore
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Local configuration, state, and logs
+.env
+.env.*
+*.log
+logs/
+data/
+*.json
+*.tmp
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Documentation
+*.md

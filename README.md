@@ -194,7 +194,45 @@ Click any section below to expand detailed features:
 
 ---
 
-### 2. Running in Headless Mode (Daemon / Server)
+### 2. Running with Docker Compose (Recommended for Servers & Homelab)
+
+Run the bot as a lightweight background container in seconds without needing Python or Git installed on your host:
+
+```yaml
+services:
+  nextdns-telegram:
+    image: ghcr.io/p0lygraph/nextdns-telegram:latest
+    container_name: nextdns-telegram-bot
+    restart: unless-stopped
+    environment:
+      - NEXTDNS_API_KEY=your_nextdns_api_key_here
+      - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+      - TELEGRAM_USER_ID=your_numeric_user_id_here
+      # Optional Threat Intel keys:
+      # - URLHAUS_API_KEY=your_urlhaus_key
+      # - URLSCAN_API_KEY=your_urlscan_key
+    volumes:
+      - ./data:/app/data
+```
+
+Start the container:
+```bash
+docker compose up -d
+```
+
+View live logs:
+```bash
+docker compose logs -f
+```
+
+Update to the latest release at any time:
+```bash
+docker compose pull && docker compose up -d
+```
+
+---
+
+### 3. Running in Headless Mode (Native Python / systemd)
 
 For background monitoring on a server, VPS, home router, or Raspberry Pi without GUI dependencies:
 

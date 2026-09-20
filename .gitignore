@@ -7,6 +7,7 @@ state.json
 *state*.json
 *.corrupt.json
 *.tmp
+data/
 
 # Logs
 *.log

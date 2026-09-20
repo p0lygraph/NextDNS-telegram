@@ -1,0 +1,19 @@
+services:
+  nextdns-telegram:
+    image: ghcr.io/p0lygraph/nextdns-telegram:latest
+    # To build locally from source instead of pulling from GHCR:
+    # build: .
+    container_name: nextdns-telegram-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - APP_DATA_DIR=/app/data
+      # You can also pass credentials directly if not using a .env file:
+      # - NEXTDNS_API_KEY=your_nextdns_api_key
+      # - TELEGRAM_BOT_TOKEN=your_bot_token
+      # - TELEGRAM_USER_ID=your_numeric_user_id
+      # - URLHAUS_API_KEY=optional_key
+      # - URLSCAN_API_KEY=optional_key
+    volumes:
+      - ./data:/app/data
