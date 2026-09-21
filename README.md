@@ -1,6 +1,7 @@
 # NextDNS Telegram & Desktop Manager
 
 [![CodeQL](https://img.shields.io/badge/CodeQL-passing-brightgreen?logo=github)](https://github.com/p0lygraph/NextDNS-telegram/security/code-scanning)
+[![Trivy](https://img.shields.io/badge/Trivy-scanned-0080FF?logo=aquasecurity)](https://github.com/p0lygraph/NextDNS-telegram/security/code-scanning)
 [![Security: Protected](https://img.shields.io/badge/Security-Protected-brightgreen.svg?logo=github)](https://github.com/p0lygraph/NextDNS-telegram/security)
 [![Dependabot](https://img.shields.io/badge/Dependabot-enabled-025e8c.svg?logo=dependabot&logoColor=white)](https://github.com/p0lygraph/NextDNS-telegram/security/dependabot)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
