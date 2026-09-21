@@ -13,9 +13,11 @@ RUN adduser -D -u 1000 appuser && \
     mkdir -p /app/data && \
     chown -R appuser:appuser /app
 
-# Install dependencies
+# Install dependencies and harden runtime container by removing package managers
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    python -m pip uninstall -y pip setuptools wheel 2>/dev/null || true && \
+    rm -rf /usr/local/lib/python3.12/site-packages/pip* /usr/local/bin/pip* /root/.cache
 
 # Copy application source code
 COPY --chown=appuser:appuser nextdns_manager/ /app/nextdns_manager/
