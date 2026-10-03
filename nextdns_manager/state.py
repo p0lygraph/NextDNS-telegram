@@ -12,11 +12,48 @@ from .constants import DEFAULT_LOG_COLUMNS
 from .utils import normalize_domain
 
 
+API_ENV_VARS = {
+    "nextdns_api_key": "NEXTDNS_API_KEY",
+    "urlhaus_api_key": "URLHAUS_API_KEY",
+    "urlscan_api_key": "URLSCAN_API_KEY",
+    "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
+    "telegram_chat_id": "TELEGRAM_USER_ID",
+}
+
+
 class PersistentStore:
     def __init__(self, path: Path):
         self.path = path
         self._lock = threading.Lock()
+        self._env_api: dict[str, tuple[str, Any]] = {}
         self.data = self._load()
+        self._apply_env_overrides()
+
+    def _apply_env_overrides(self) -> None:
+        api = self.data.get("api")
+        if not isinstance(api, dict):
+            api = self.data["api"] = dict.fromkeys(API_ENV_VARS, "")
+        for key, env_name in API_ENV_VARS.items():
+            value = os.getenv(env_name, "").strip()
+            if not value:
+                continue
+            stored = api.get(key, "")
+            # Stored copy of an env secret is a leak from older versions.
+            is_leak = isinstance(stored, str) and stored.strip() == value
+            self._env_api[key] = (value, "" if is_leak else stored)
+            api[key] = value
+
+    def _persistable(self) -> dict[str, Any]:
+        api = self.data.get("api")
+        if not self._env_api or not isinstance(api, dict):
+            return self.data
+        api = dict(api)
+        for key, (env_value, stored) in self._env_api.items():
+            if api.get(key) == env_value:
+                api[key] = stored
+            else:
+                self._env_api[key] = (env_value, api.get(key))
+        return {**self.data, "api": api}
 
     def _load(self) -> dict[str, Any]:
         defaults = {
@@ -24,11 +61,11 @@ class PersistentStore:
             "last_tab": 0,
             "window": {"geometry": "1360x820"},
             "api": {
-                "nextdns_api_key": os.getenv("NEXTDNS_API_KEY", ""),
-                "urlhaus_api_key": os.getenv("URLHAUS_API_KEY", ""),
-                "urlscan_api_key": os.getenv("URLSCAN_API_KEY", ""),
-                "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
-                "telegram_chat_id": os.getenv("TELEGRAM_USER_ID", ""),
+                "nextdns_api_key": "",
+                "urlhaus_api_key": "",
+                "urlscan_api_key": "",
+                "telegram_bot_token": "",
+                "telegram_chat_id": "",
             },
             "settings": {
                 "poll_interval_seconds": 30,
@@ -112,7 +149,7 @@ class PersistentStore:
     def save(self) -> None:
         with self._lock:
             try:
-                payload = json.dumps(self.data, indent=2, ensure_ascii=True)
+                payload = json.dumps(self._persistable(), indent=2, ensure_ascii=True)
             except (TypeError, ValueError) as exc:
                 print(f"[WARN] Failed to serialize state for {self.path}: {exc}")
                 return
