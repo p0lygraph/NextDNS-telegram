@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from datetime import datetime
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,7 @@ from .deps import requests
 from .nextdns_api import NextDNSService
 from .state import LegacyStateManager, PersistentStore
 from .telegram_bot import (
+    _telegram_send_message,
     process_telegram_updates,
     redact_telegram_token,
     send_alert_message,
@@ -85,6 +88,30 @@ def run_headless(root_dir: Path) -> None:
         return
 
     set_bot_commands(token, log)
+
+    def data_dir_write_error() -> str | None:
+        probe = root_dir / ".write_probe"
+        try:
+            probe.write_text("", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            return str(exc)
+        return None
+
+    write_error = data_dir_write_error()
+    if write_error:
+        # Unsaved cursor makes every restart replay alerts from the last persisted one.
+        run_as = f"uid {os.getuid()}" if hasattr(os, "getuid") else "the bot's user"
+        warning = (
+            f"State cannot be saved: {write_error}. "
+            "After a restart the bot will resend alerts it has already sent. "
+            f"Make {root_dir} writable for {run_as}."
+        )
+        log(f"[ERROR] {warning}")
+        try:
+            _telegram_send_message(token, chat_id, f"⚠️ {html_escape(warning)}")
+        except (requests.RequestException, RuntimeError) as exc:
+            log(f"[WARN] Failed to send startup warning: {redact_telegram_token(str(exc), token)}")
 
     def poll_telegram_updates() -> int:
         nonlocal telegram_update_offset

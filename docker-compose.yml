@@ -16,4 +16,5 @@ services:
       # - URLHAUS_API_KEY=optional_key
       # - URLSCAN_API_KEY=optional_key
     volumes:
+      # Create ./data owned by uid 1000 first; Docker would create it as root.
       - ./data:/app/data

@@ -216,6 +216,11 @@ services:
       - ./data:/app/data
 ```
 
+It is advised to create the data directory and hand it to the container user (uid 1000) before the first start. Otherwise Docker may create `./data` as root, in which case the bot cannot save its state there and resends already delivered alerts after every restart:
+```bash
+mkdir -p data && sudo chown 1000:1000 data
+```
+
 Start the container:
 ```bash
 docker compose up -d
